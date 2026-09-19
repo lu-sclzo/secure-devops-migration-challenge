@@ -1,0 +1,56 @@
+name: Secure DevOps CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: secure-devops-migration-lu
+  SNS_TOPIC_ARN: arn:aws:sns:us-east-1:829314284818:secure-devops-pipeline-notifications
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate HTML
+        run: |
+          test -f src/index.html
+          grep -q "<html" src/index.html
+          grep -q "</html>" src/index.html
+          echo "HTML validation successful"
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::829314284818:role/GitHubActions-SecureDevOps-Role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy application to S3
+        run: |
+          aws s3 sync src/ s3://${{ env.S3_BUCKET }}/ --delete
+
+      - name: Send success notification
+        if: success()
+        run: |
+          aws sns publish \
+            --topic-arn "${{ env.SNS_TOPIC_ARN }}" \
+            --subject "Secure DevOps Pipeline SUCCESS" \
+            --message "GitHub Actions successfully validated and deployed the application to Amazon S3."
+
+      - name: Send failure notification
+        if: failure()
+        run: |
+          aws sns publish \
+            --topic-arn "${{ env.SNS_TOPIC_ARN }}" \
+            --subject "Secure DevOps Pipeline FAILURE" \
+            --message "The Secure DevOps GitHub Actions pipeline failed. Review the GitHub Actions logs for details."
