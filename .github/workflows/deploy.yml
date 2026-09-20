@@ -5,10 +5,6 @@ on:
     branches:
       - main
 
-permissions:
-  id-token: write
-  contents: read
-
 env:
   AWS_REGION: us-east-1
   S3_BUCKET: secure-devops-migration-lu
@@ -21,27 +17,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Show GitHub OIDC subject
-        shell: bash
-        run: |
-          TOKEN_JSON=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-
-          TOKEN=$(echo "$TOKEN_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
-
-          export TOKEN
-          python3 - <<'PY'
-          import os, json, base64
-
-          token = os.environ["TOKEN"]
-          payload = token.split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload))
-
-          print("OIDC issuer:", claims.get("iss"))
-          print("OIDC audience:", claims.get("aud"))
-          print("OIDC subject:", claims.get("sub"))
-          PY
+      
 
       - name: Validate HTML
         run: |
@@ -49,13 +25,13 @@ jobs:
           grep -q "<html" src/index.html
           grep -q "</html>" src/index.html
           echo "HTML validation successful"
-
-      - name: Configure AWS credentials using OIDC
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::829314284818:role/GitHubActions-SecureDevOps-Role
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-
+     
       - name: Deploy application to S3
         run: |
           aws s3 sync src/ s3://${{ env.S3_BUCKET }}/ --delete
